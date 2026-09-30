@@ -1,0 +1,299 @@
+DYNAMIC ARRAY
+=============
+
+This is the first topic because almost everything else builds on it. A stack,
+a queue, a heap, and a hash table's bucket list are all often built on top of
+a dynamic array. std::vector is the C++ standard library's dynamic array.
+
+
+1. WHAT IT IS
+-------------
+
+A normal C++ array has a fixed size that you choose when you create it:
+
+    int a[10];          // always exactly 10 ints, forever
+
+A dynamic array is an array that can GROW (and sometimes shrink) while the
+program runs. You can keep adding elements to the end, and it makes room for
+them on its own.
+
+Analogy: a bookshelf in a small apartment. You have one shelf with 4 slots.
+When you buy a 5th book, you can't glue a slot onto the end, because the wall
+is in the way. So you buy a bigger shelf (8 slots), move all 4 books over, put
+the new book in, and throw away the old shelf. Moving is slow, but you do it
+rarely, because each new shelf is twice as big as the old one.
+
+
+2. CORE OPERATIONS
+------------------
+
+Terms used below:
+  - size:     how many elements are actually stored right now.
+  - capacity: how many elements fit in the memory we currently own.
+              Always: size <= capacity.
+  - Big-O:    how the running time grows as the number of elements (n) grows.
+              O(1) = constant time, the same no matter how big n is.
+              O(n) = time grows in proportion to n.
+  - amortized O(1): a single call can sometimes be slow (O(n)), but averaged
+              over many calls, each one costs O(1). Explained in section 3.
+
+  Operation            What it does                              Time
+  -------------------  ----------------------------------------  ---------------
+  push_back(x)         add x at the end                          amortized O(1)
+                                                                 worst case O(n)
+  pop_back()           remove the last element                   O(1)
+  at(i) / operator[i]  read or write element at index i          O(1)
+  front() / back()     first / last element                      O(1)
+  size()               number of stored elements                 O(1)
+  capacity()           number of slots currently allocated       O(1)
+  empty()              true if size == 0                         O(1)
+  insert(i, x)         put x at index i, shift the rest right    O(n)
+  erase(i)             remove index i, shift the rest left       O(n)
+  reserve(n)           make capacity at least n (no size change) O(n) if it grows
+  clear()              set size to 0 (capacity stays)            O(1) for ints
+
+Difference between at(i) and operator[](i):
+  - at(i) checks that i < size and throws std::out_of_range if not.
+  - operator[](i) does NOT check. A bad index is "undefined behavior"
+    (the program may crash, print garbage, or seem to work - anything).
+    It is faster because it skips the check.
+
+
+3. HOW IT WORKS INTERNALLY
+--------------------------
+
+The class holds three things:
+
+    int*        data_;       // pointer to a block of memory on the heap
+    std::size_t size_;       // how many slots are in use
+    std::size_t capacity_;   // how many slots the block has
+
+"Heap" here means memory you request at runtime with new[] and must give back
+with delete[]. (Not the same thing as the heap data structure later.)
+
+Memory picture, capacity 8, size 5:
+
+    data_ --> [ 10 | 20 | 30 | 40 | 50 |  ?  |  ?  |  ?  ]
+                0    1    2    3    4    5     6     7
+              \______ in use ______/  \___ free slots __/
+                   size_ = 5            capacity_ = 8
+
+The elements sit next to each other in memory ("contiguous"). That is why
+indexing is O(1): the address of element i is just data_ + i. It also makes
+loops over the array very fast, because the CPU cache loads neighbouring
+memory together.
+
+push_back(x):
+  1. If size_ < capacity_: write x into data_[size_], then size_++. Done. O(1).
+  2. If size_ == capacity_ (full):
+       a. allocate a NEW block, usually 2 * capacity_ (or 1 if capacity_ is 0)
+       b. copy the old elements into the new block        <- this is O(n)
+       c. delete[] the old block
+       d. point data_ at the new block, update capacity_
+       e. now do step 1
+
+Why "amortized O(1)"? With doubling, a copy happens at sizes 1, 2, 4, 8, 16...
+To push n elements you copy at most 1 + 2 + 4 + ... + n/2 + n  <  2n elements
+in total. 2n work spread over n pushes = about 2 per push = O(1) on average.
+
+If you grew by a FIXED amount instead (e.g. +10 each time), you would copy
+10 + 20 + 30 + ... + n elements, which is about n*n/20: O(n) per push on
+average. That is the key reason to grow by multiplying, not adding.
+
+pop_back():
+  Just size_--. The value is still in memory, but we treat that slot as free.
+  No memory is released. (For int that is fine. For a type like std::string
+  a real implementation would also destroy the object; ignore that for now.)
+
+insert(i, x) / erase(i):
+  Everything after index i has to move one slot to the right (insert) or left
+  (erase). That is why they are O(n). Doing them at the END is cheap; doing
+  them at the FRONT is the most expensive.
+
+Ownership:
+  The dynamic array OWNS its memory block. "Owns" means it is responsible for
+  freeing it. That leads to the Rule of Three / Five:
+
+  If your class manages a resource (like memory from new[]), the compiler's
+  automatic copy is WRONG: it copies the pointer, not the block. Two objects
+  then point to the same memory, and both will delete[] it (a "double free").
+
+  So you must write these yourself:
+    - destructor              ~DynamicArray()          frees the block
+    - copy constructor        DynamicArray(const DynamicArray&)
+                              allocates a NEW block and copies the elements
+    - copy assignment         operator=(const DynamicArray&)
+                              frees own block, copies the other's elements
+    - move constructor        DynamicArray(DynamicArray&&) noexcept
+                              steals the other's pointer, leaves it empty
+    - move assignment         operator=(DynamicArray&&) noexcept
+                              frees own block, steals the other's pointer
+
+  The first three are the Rule of Three; adding the two move operations
+  makes the Rule of Five. "Move" means "take the resources of an object that
+  is about to die instead of copying them". It is O(1) because it only copies
+  the pointer and two numbers.
+
+
+4. WHEN TO USE IT / WHEN NOT TO
+-------------------------------
+
+Use it when:
+  - You need fast access by index.
+  - You mostly add/remove at the end.
+  - You loop over all elements often (contiguous memory = cache friendly).
+  - You don't know the final size in advance.
+  In practice std::vector is the default container in C++. Pick something
+  else only when you have a reason.
+
+Don't use it when:
+  - You insert/remove at the FRONT or MIDDLE often -> each one is O(n).
+    Consider a deque (for front+back) or a linked list (if you already hold
+    a pointer to the spot where you insert).
+  - You keep pointers/references to elements while also pushing new ones
+    (they break on resize - see pitfalls).
+  - The size is known at compile time and never changes -> a plain array or
+    std::array is simpler.
+
+Compared to a linked list:
+  Dynamic array: O(1) index, cache friendly, O(n) insert in the middle.
+  Linked list:   O(n) index (must walk), O(1) insert if you have the node,
+                 poor cache use, extra memory for pointers per element.
+  In real programs the dynamic array usually wins even when the Big-O
+  suggests otherwise, because of cache effects.
+
+
+5. COMMON PITFALLS
+------------------
+
+  - pop_back(), front(), back() on an EMPTY array. size_ is unsigned
+    (std::size_t), so size_-- when size_ == 0 wraps around to a huge number,
+    not -1. Decide what to do: throw an exception or assert.
+
+  - Growing from capacity 0. 0 * 2 == 0, so "double the capacity" never grows
+    and you write past the end. Handle the zero case.
+
+  - Off-by-one in bounds checks. Valid indices are 0 .. size_-1. The check is
+    i < size_, not i <= size_. Also check against size_, not capacity_:
+    slots between size_ and capacity_ are not real elements.
+
+  - Memory leaks: forgetting delete[] in the destructor, or forgetting to
+    delete[] the OLD block after resizing. The address sanitizer
+    (-fsanitize=address) will report both.
+
+  - new[] must be paired with delete[], never plain delete.
+
+  - Shallow copy: not writing the copy constructor / copy assignment. The
+    default copies only the pointer -> double free at the end of the program.
+
+  - Self-assignment: a = a; If copy assignment first does delete[] data_ and
+    then copies from other.data_, it is reading memory it just freed
+    (because other IS *this). Check for it, or use "copy-and-swap".
+
+  - Exception safety in resize/assignment: if you delete[] the old block
+    BEFORE the new allocation succeeds and new throws std::bad_alloc, the
+    object is left pointing at freed memory. Allocate first, then free.
+
+  - Moved-from object: after a move, set the source's pointer to nullptr and
+    its size/capacity to 0, otherwise its destructor frees the stolen block.
+
+  - Invalidation: a pointer, reference or iterator to an element becomes
+    INVALID (points to freed memory) after any push_back that causes a
+    resize. Example:
+        int& first = arr[0];
+        arr.push_back(99);    // may reallocate
+        first = 5;            // may write into freed memory
+    The same applies to std::vector.
+
+
+6. SMALL CODE SKETCH (interface only)
+-------------------------------------
+
+Start with ints only. Making it a template is exercise 5.
+
+    #include <cstddef>   // std::size_t
+
+    class DynamicArray {
+    public:
+        DynamicArray();                                   // empty, capacity 0
+        explicit DynamicArray(std::size_t initial_capacity);
+        ~DynamicArray();
+
+        DynamicArray(const DynamicArray& other);             // copy
+        DynamicArray& operator=(const DynamicArray& other);  // copy assign
+        DynamicArray(DynamicArray&& other) noexcept;         // move
+        DynamicArray& operator=(DynamicArray&& other) noexcept; // move assign
+
+        void push_back(int value);
+        void pop_back();
+
+        int&       operator[](std::size_t index);        // no bounds check
+        const int& operator[](std::size_t index) const;
+        int&       at(std::size_t index);                // throws if bad
+        const int& at(std::size_t index) const;
+
+        int& front();
+        int& back();
+
+        std::size_t size() const;
+        std::size_t capacity() const;
+        bool        empty() const;
+
+        void reserve(std::size_t new_capacity);
+        void clear();
+
+        void insert(std::size_t index, int value);
+        void erase(std::size_t index);
+
+    private:
+        void grow();   // helper: allocate bigger block, copy, free old
+
+        int*        data_     = nullptr;
+        std::size_t size_     = 0;
+        std::size_t capacity_ = 0;
+    };
+
+Why two versions of operator[] and at()? The const version is used when the
+array itself is const (e.g. passed as const DynamicArray&). It returns a
+const reference so the caller can read but not modify.
+
+
+7. EXERCISES
+------------
+
+Put your code in dynamic_array/dynamic_array.cpp, with a main() that tries
+things out. Compile with:
+
+  g++ -std=c++17 -Wall -Wextra -Wpedantic -g -fsanitize=address,undefined \
+      dynamic_array/dynamic_array.cpp -o dynamic_array/dynamic_array.out
+
+Exercise 1 - The basics.
+  Implement: default constructor, destructor, push_back (with doubling),
+  operator[], size(), capacity(), empty().
+  In main(), push 1..20 and print size and capacity after each push.
+  Check that capacity goes 1, 2, 4, 8, 16, 32 and that the sanitizer is quiet.
+
+Exercise 2 - Safe access and removal.
+  Add at() (throw std::out_of_range), front(), back(), pop_back(), clear().
+  Decide what pop_back/front/back do on an empty array and make it consistent.
+  Try arr.at(arr.size()) and catch the exception.
+
+Exercise 3 - Rule of Five.
+  Add copy constructor, copy assignment, move constructor, move assignment.
+  Test: copy an array, change the copy, check the original did not change.
+  Test: a = a; must not crash. Test: move, then check the source is empty.
+  First try it WITHOUT writing the copy constructor and read the sanitizer
+  error - it is worth seeing once.
+
+Exercise 4 - Middle operations and reserve.
+  Add insert(i, x), erase(i), reserve(n). insert at index size() should work
+  like push_back. Count how many element moves insert(0, x) does on an
+  array of 1000 elements, and compare with push_back.
+
+Exercise 5 - Make it generic (harder).
+  Turn it into template<typename T> class DynamicArray and test it with
+  std::string. You will find that new T[capacity] default-constructs every
+  slot and that pop_back leaves a live object behind. Write down why that is
+  a problem, then look up how std::vector avoids it (hint: "placement new"
+  and separating allocation from construction). Finally, compare your
+  class's behavior and speed with std::vector.

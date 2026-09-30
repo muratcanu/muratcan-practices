@@ -1,0 +1,11 @@
+# Compiled binaries: name them with a .out suffix, e.g.
+#   g++ ... dynamic_array/dynamic_array.cpp -o dynamic_array/dynamic_array.out
+*.out
+*.o
+build/
+
+# Debugger / sanitizer / editor leftovers
+*.dSYM/
+core
+.vscode/
+.idea/
