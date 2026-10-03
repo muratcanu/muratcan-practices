@@ -76,18 +76,20 @@ class DynamicArray {
 
         // Copy Assignment
         DynamicArray &operator=(const DynamicArray &other) {
-            size_ = other.size();
-            capacity_ = other.size();
+            if (this == &other) return *this;
             delete[] data_;
             data_ = new int[other.size()];
             for (std::size_t i = 0; i < other.size(); i++) {
                 data_[i] = other[i];
             }
+            size_ = other.size();
+            capacity_ = other.size();
             return *this;
         }
 
         // Move Assignment
         DynamicArray& operator=(DynamicArray&& other) noexcept {
+            if (this == &other) return *this;
             delete[] data_;
             data_ = other.data_;
             size_ = other.size();
