@@ -7,6 +7,7 @@
 #include <utility>
 constexpr std::size_t kInitialSize = 0;
 
+template <typename T>
 class DynamicArray {
     public:
         // Constructor
@@ -14,7 +15,7 @@ class DynamicArray {
             size_ = kInitialSize;
             capacity_ = initial_capacity;
             if(initial_capacity > 0) {
-                data_ = new int[initial_capacity];
+                data_ = new T[initial_capacity];
             } else {
                 data_ = nullptr;
             }
@@ -23,7 +24,7 @@ class DynamicArray {
 
         // Copy Constructor
         DynamicArray(const DynamicArray& other) {
-            data_ = new int[other.size()];
+            data_ = new T[other.size()];
             size_ = other.size();
             capacity_ = other.size();
             for (std::size_t i = 0; i < other.size(); i++) {
@@ -56,7 +57,7 @@ class DynamicArray {
             return capacity_;
         }
 
-        void push_back(int value) {
+        void push_back(const T& value) {
             if (size_ == capacity_) {
                 // Have to grow array
                 grow();
@@ -66,11 +67,11 @@ class DynamicArray {
             size_++;
         }
 
-        int& operator[](std::size_t index) {
+        T& operator[](std::size_t index) {
             return data_[index];
         }
 
-        const int& operator[](std::size_t index) const {
+        const T& operator[](std::size_t index) const {
             return data_[index];
         }
 
@@ -78,7 +79,7 @@ class DynamicArray {
         DynamicArray &operator=(const DynamicArray &other) {
             if (this == &other) return *this;
             delete[] data_;
-            data_ = new int[other.size()];
+            data_ = new T[other.size()];
             for (std::size_t i = 0; i < other.size(); i++) {
                 data_[i] = other[i];
             }
@@ -100,7 +101,7 @@ class DynamicArray {
             return *this;
         }
 
-        int& at(std::size_t index) {
+        T& at(std::size_t index) {
             if (size_ <= index) {
                 throw std::out_of_range("Invalid index: " + std::to_string(index));
             } else {
@@ -108,7 +109,7 @@ class DynamicArray {
             }
         }
 
-        const int& at(std::size_t index) const {
+        const T& at(std::size_t index) const {
             if (size_ <= index) {
                 throw std::out_of_range("Invalid index: " + std::to_string(index));
             } else {
@@ -116,29 +117,29 @@ class DynamicArray {
             }
         }
 
-        int pop_back() {
+        T pop_back() {
             assert(size_ > 0);
-            int value = data_[size_ - 1];
+            T value = data_[size_ - 1];
             size_--;
             return value;
         }
 
-        int& back() {
+        T& back() {
             assert(size_ > 0);
             return data_[size_ - 1];
         }
 
-        const int& back() const {
+        const T& back() const {
             assert(size_ > 0);
             return data_[size_ - 1];
         }
 
-        int& front() {
+        T& front() {
             assert(size_ > 0);
             return data_[0];
         }
 
-        const int& front() const {
+        const T& front() const {
             assert(size_ > 0);
             return data_[0];
         }
@@ -147,7 +148,7 @@ class DynamicArray {
             size_ = 0;
         }
 
-        void insert(std::size_t index, int value) {
+        void insert(std::size_t index, const T& value) {
             assert(size_ >= index);
             if (index == size_) {
                 push_back(value);
@@ -179,8 +180,8 @@ class DynamicArray {
 
         void reserve(std::size_t newCapacity) {
             if (newCapacity < capacity_) return;
-            int* tmpdata = data_;
-            data_ = new int[newCapacity];
+            T* tmpdata = data_;
+            data_ = new T[newCapacity];
             for (std::size_t i = 0; i < size_; i++) {
                 data_[i] = tmpdata[i];
                 moveCount_++;
@@ -189,7 +190,7 @@ class DynamicArray {
             delete[] tmpdata;
         }
 
-        const std::size_t moveCount() const{
+        std::size_t moveCount() const{
             return moveCount_;
         }
 
@@ -200,18 +201,18 @@ class DynamicArray {
     private:
         std::size_t capacity_;
         std::size_t size_;
-        int* data_;
+        T* data_;
         std::size_t moveCount_;
 
         void grow() {
             // Create a temporary pointer to not lose existing data
-            int* tmpdata = data_;
+            T* tmpdata = data_;
             if (capacity_ == 0) {
-                data_ = new int[1];
+                data_ = new T[1];
                 capacity_ = 1;
             } else {
                 // Allocate the bigger memory
-                data_ = new int[capacity_ * 2];
+                data_ = new T[capacity_ * 2];
                 capacity_ = capacity_ * 2;
                 // Copy each element on old memory to new one
                 for(std::size_t i = 0; i < size_; i++) {
@@ -235,8 +236,8 @@ void check(bool condition, const std::string& description) {
 }
 
 // Returns an array holding first, first+1, ..., first+count-1
-DynamicArray makeArray(int first, std::size_t count) {
-    DynamicArray arr;
+DynamicArray<int> makeArray(int first, std::size_t count) {
+    DynamicArray<int> arr;
     for (std::size_t i = 0; i < count; i++) {
         arr.push_back(first + static_cast<int>(i));
     }
@@ -244,7 +245,7 @@ DynamicArray makeArray(int first, std::size_t count) {
 }
 
 // True if arr holds exactly first, first+1, ..., first+count-1
-bool holdsSequence(const DynamicArray& arr, int first, std::size_t count) {
+bool holdsSequence(const DynamicArray<int>& arr, int first, std::size_t count) {
     if (arr.size() != count) {
         return false;
     }
@@ -261,7 +262,7 @@ bool holdsSequence(const DynamicArray& arr, int first, std::size_t count) {
 void testGrowth() {
     std::cout << "Exercise 1: push_back and growth" << std::endl;
 
-    DynamicArray arr;
+    DynamicArray<int> arr;
     check(arr.size() == 0 && arr.capacity() == 0, "new array is empty");
 
     std::size_t expected_capacity = 1;
@@ -278,7 +279,7 @@ void testGrowth() {
     check(doubles_correctly, "capacity goes 1, 2, 4, 8, 16, 32");
     check(holdsSequence(arr, 1, 20), "holds 1..20 after growing");
 
-    DynamicArray preallocated(5);
+    DynamicArray<int> preallocated(5);
     check(preallocated.size() == 0 && preallocated.capacity() == 5, "constructor with capacity 5");
 }
 
@@ -353,7 +354,7 @@ void testCopyAssignment() {
     check(original[0] == 1, "changing the target does not change the source");
 
     // Assigning through a reference so the compiler doesn't warn about a = a
-    DynamicArray& sameArray = original;
+    DynamicArray<int>& sameArray = original;
     original = sameArray;
     check(holdsSequence(original, 1, 5), "self-assignment (a = a) keeps the elements");
 }
@@ -372,8 +373,8 @@ void testMoveConstructor() {
     source.push_back(42);
     check(source.size() == 1 && source[0] == 42, "source can be reused after the move");
 
-    DynamicArray emptySource;
-    DynamicArray fromEmpty(std::move(emptySource));
+    DynamicArray<int> emptySource;
+    DynamicArray<int> fromEmpty(std::move(emptySource));
     check(fromEmpty.size() == 0 && fromEmpty.capacity() == 0, "moving an empty array");
 }
 
@@ -390,7 +391,7 @@ void testMoveAssignment() {
     check(source.size() == 0 && source.capacity() == 0, "source is empty after the move");
 
     // Moving through a reference so the compiler doesn't warn about a = std::move(a)
-    DynamicArray& sameArray = destination;
+    DynamicArray<int>& sameArray = destination;
     destination = std::move(sameArray);
     check(holdsSequence(destination, 1, 5), "self-move (a = std::move(a)) keeps the elements");
 }
@@ -462,7 +463,7 @@ void testErase() {
 void testReserve() {
     std::cout << "Exercise 4: reserve" << std::endl;
 
-    DynamicArray empty;
+    DynamicArray<int> empty;
     empty.reserve(2000);
     check(empty.capacity() == 2000 && empty.size() == 0, "reserve(2000) on empty: capacity 2000, size 0");
     for (int i = 0; i < 200; i++) {
@@ -485,7 +486,75 @@ void testReserve() {
     check(holdsSequence(shrink, 1, 11), "push_back still works after reserve(2)");
 }
 
+void testStrings() {
+    std::cout << "Exercise 5: std::string" << std::endl;
+
+    DynamicArray<std::string> words;
+    words.push_back("apple");
+    words.push_back("banana");
+    words.push_back("cherry");
+    words.push_back("orange");
+    words.push_back("mango");
+    check(words.size() == 5 && words.capacity() == 8 && 
+        words[0] == "apple" && words[4] == "mango", 
+        "push_back five strings");
+
+    words.insert(1, "kiwi");
+    check(words.size() == 6 && words.capacity() == 8 && 
+        words[0] == "apple" && words[1] == "kiwi" && 
+        words[2] == "banana" && words[5] == "mango", 
+        "insert a string");
+
+    words.erase(0);
+    check(words.size() == 5 && words.capacity() == 8 && 
+        words[0] == "kiwi" && words[1] == "banana" && 
+        words[2] == "cherry" && words[4] == "mango", 
+        "erase the first string");
+
+    DynamicArray wordsCopy = words;
+    wordsCopy[0] = "avacado";
+
+    check(words.size() == 5 && words.capacity() == 8 && 
+        words[0] == "kiwi" && wordsCopy[0] == "avacado",
+        "copy did not affect source");
+
+    DynamicArray wordsMove = std::move(words);
+    check(wordsMove.size() == 5 && wordsMove.capacity() == 8 && words.size() == 0 &&
+        wordsMove[0] == "kiwi" && wordsMove[1] == "banana" && 
+        wordsMove[2] == "cherry" && wordsMove[4] == "mango", 
+        "move affected the source");
+
+    bool threw = false;
+    try {
+        wordsMove.at(wordsMove.size());
+    } catch (const std::out_of_range& e) {
+        threw = true;
+        std::cout << "        (message: " << e.what() << ")" << std::endl;
+    }
+    check(threw, "at(size()) throws std::out_of_range");
+
+    std::string lastWord = wordsMove.pop_back();
+    check(wordsMove.size() == 4 && wordsMove.capacity() == 8 &&
+        wordsMove[0] == "kiwi" && wordsMove[1] == "banana" && 
+        wordsMove[2] == "cherry" && wordsMove[3] == "orange" && lastWord == "mango",
+        "pop_back returned the last element");
+
+    wordsMove.push_back("Although the rain had been falling steadily since early morning, turning the streets into shimmering rivers of reflected lights and making every passing car hiss against the wet pavement, she decided to leave the warmth of her apartment anyway, carrying only a small umbrella, a half-charged phone, and the quiet determination to walk across the city before sunset so that she could clear her mind, listen to the distant sounds of traffic and music drifting from open windows, watch the clouds slowly separate above the rooftops, and remind herself that even on difficult days, when everything feels uncertain and overwhelmingly complicated, there are still small moments of beauty, unexpected kindness, and simple reasons to keep moving forward.");
+    check(wordsMove[4] == "Although the rain had been falling steadily since early morning, turning the streets into shimmering rivers of reflected lights and making every passing car hiss against the wet pavement, she decided to leave the warmth of her apartment anyway, carrying only a small umbrella, a half-charged phone, and the quiet determination to walk across the city before sunset so that she could clear her mind, listen to the distant sounds of traffic and music drifting from open windows, watch the clouds slowly separate above the rooftops, and remind herself that even on difficult days, when everything feels uncertain and overwhelmingly complicated, there are still small moments of beauty, unexpected kindness, and simple reasons to keep moving forward."
+        ,"Very long sentence test");
+}
+
+// struct myStructure{
+//   int myNum;
+//   myStructure(int num) {
+//     myNum = num *2;
+//   }
+// };
+
 int main() {
+    // DynamicArray<myStructure> arr;
+    // arr.push_back(myStructure(8));
+    
     testGrowth();
     testAccessAndRemoval();
     testCopyConstructor();
@@ -495,6 +564,7 @@ int main() {
     testInsert();
     testErase();
     testReserve();
+    testStrings();
 
     std::cout << std::endl << g_failures << " test(s) failed" << std::endl;
 
