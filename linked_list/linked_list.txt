@@ -1,0 +1,362 @@
+LINKED LIST
+===========
+
+The dynamic array keeps all elements in one block of memory. A linked list
+does the opposite: every element lives in its own small block, and each block
+remembers where the next one is. That one change flips most of the trade-offs
+you saw with the dynamic array.
+
+This topic is also the first time you build a structure out of many small
+heap allocations that point at each other. Getting the pointers right (and
+freeing every node exactly once) is the real skill here, and it carries over
+directly to trees and graphs later.
+
+
+1. WHAT IT IS
+-------------
+
+A linked list is a chain of "nodes". A node is a small object that holds:
+  - one value, and
+  - a pointer to the next node (nullptr if it is the last one).
+
+The list itself only needs to remember the first node, called the "head".
+To reach any other element you start at the head and follow the pointers.
+
+Analogy: a scavenger hunt. You are given the first clue. Each clue tells you
+where the next clue is hidden. To get to clue 7 you must visit clues 1 to 6
+first; there is no way to jump straight there. But adding a new clue between
+clue 3 and clue 4 is easy: change clue 3 to point at the new spot, and make
+the new clue point at clue 4. Nothing else moves.
+
+There are two common kinds:
+  - singly linked list: each node points to the NEXT node only.
+                        (std::forward_list)
+  - doubly linked list: each node points to the next AND the previous node.
+                        (std::list)
+
+Start with singly linked. Exercise 5 turns it into a doubly linked list.
+
+
+2. CORE OPERATIONS
+------------------
+
+Terms used below:
+  - node:  one element's box: value + pointer(s).
+  - head:  pointer to the first node (nullptr if the list is empty).
+  - tail:  pointer to the last node. Optional, but keeping it makes
+           push_back O(1) instead of O(n).
+  - n:     number of elements.
+
+For a SINGLY linked list that stores head, tail and size:
+
+  Operation              What it does                             Time
+  ---------------------  ---------------------------------------  --------
+  push_front(x)          add x before the first element           O(1)
+  push_back(x)           add x after the last element             O(1)
+                                                                  (needs tail)
+  pop_front()            remove the first element                 O(1)
+  pop_back()             remove the last element                  O(n)  (!)
+  front() / back()       first / last value                       O(1)
+  size() / empty()       number of elements / size == 0           O(1)
+                                                                  (if stored)
+  at(i)                  value at position i                      O(n)
+  find(x)                first node holding x, or nullptr         O(n)
+  insert_after(node, x)  put x right after a node you already have O(1)
+  insert(i, x)           put x at position i                      O(n)
+                                                                  (walk to i-1)
+  erase(i)               remove position i                        O(n)
+  clear()                delete every node                        O(n)
+  reverse()              flip the order in place                  O(n)
+
+Why is pop_back O(n) in a singly linked list? Removing the last node means
+the SECOND-to-last node must become the new tail, and its next must be set
+to nullptr. But nodes only point forward, so the only way to find the
+second-to-last node is to walk from the head. A doubly linked list fixes this
+with tail->prev, which makes pop_back O(1).
+
+Notice the pattern: insertion and removal are O(1) only when you already have
+a pointer to the right place. "Insert at position i" is still O(n), because
+finding position i is O(n).
+
+
+3. HOW IT WORKS INTERNALLY
+--------------------------
+
+A node and the list:
+
+    struct Node {
+        T     value;
+        Node* next;
+    };
+
+    Node*       head_ = nullptr;
+    Node*       tail_ = nullptr;
+    std::size_t size_ = 0;
+
+Each node is created separately with new and freed separately with delete
+(not new[] / delete[] - each node is a single object).
+
+Memory picture, list holding 10, 20, 30:
+
+    head_                                         tail_
+      |                                             |
+      v                                             v
+    +----+------+       +----+------+       +----+---------+
+    | 10 | next-+-----> | 20 | next-+-----> | 30 | nullptr |
+    +----+------+       +----+------+       +----+---------+
+    address 0x5a10      address 0x7f20      address 0x5c80
+
+The addresses are scattered. The nodes are NOT next to each other in memory
+("non-contiguous"), so there is no "address of element i = start + i" trick.
+That is why at(i) has to walk.
+
+Empty list:
+
+    head_ = nullptr, tail_ = nullptr, size_ = 0
+
+push_front(x):
+  1. node = new Node{x, head_}      // new node points at the old first node
+  2. head_ = node
+  3. if the list WAS empty, tail_ = node too
+  4. size_++
+
+push_back(x):
+  1. node = new Node{x, nullptr}
+  2. if empty:  head_ = tail_ = node
+     else:      tail_->next = node;  tail_ = node
+  3. size_++
+
+pop_front():
+  1. old = head_
+  2. head_ = head_->next            // save the rest of the list FIRST
+  3. delete old
+  4. if head_ is now nullptr, the list is empty: set tail_ = nullptr too
+  5. size_--
+
+insert_after(node, x):      before:  [A] ---------> [B]
+  1. n = new Node{x, node->next}     after:   [A] -> [x] -> [B]
+  2. node->next = n
+  3. if node was tail_, tail_ = n
+  The ORDER of steps 1 and 2 matters. If you set node->next = n first, you
+  have lost the only pointer to B and the rest of the list.
+
+Destructor / clear():
+  Walk the list and delete each node. You must read cur->next BEFORE
+  delete cur, because after delete you are not allowed to touch *cur:
+
+    Node* cur = head_;
+    while (cur != nullptr) {
+        Node* next = cur->next;
+        delete cur;
+        cur = next;
+    }
+
+Doubly linked list (exercise 5):
+  Node gets a third field, Node* prev. Every operation now has to keep BOTH
+  directions correct, so there are twice as many pointers to update. A
+  common trick is a "sentinel" (dummy) node: one extra node that is always
+  there, with head = sentinel.next and tail = sentinel.prev. It removes most
+  of the "is the list empty?" special cases. Optional - try it if you like.
+
+Ownership (same rules as the dynamic array):
+  The list OWNS all its nodes. So the Rule of Five applies:
+    - destructor:      delete every node
+    - copy ctor:       create NEW nodes with the same values, SAME order
+    - copy assignment: free own nodes, then copy the other's
+    - move ctor:       steal head_, tail_, size_; set the source to empty
+    - move assignment: free own nodes, then steal
+
+  Unlike the dynamic array, a list of std::string has no "default-constructed
+  slots" problem: each node is created only when a value arrives, with
+  new Node{value, ...}, and destroyed with delete when it is removed. So you
+  can write this one as a template from the start.
+
+
+4. WHEN TO USE IT / WHEN NOT TO
+-------------------------------
+
+Use it when:
+  - You insert or remove in the middle a lot AND you already hold a pointer
+    (or iterator) to the spot. Example: an LRU cache moves an item to the
+    front of a list every time it is used.
+  - You need pointers/references to elements to stay valid while you add
+    and remove OTHER elements. A node never moves in memory. (Compare with
+    the dynamic array, where push_back may reallocate and break pointers.)
+  - You need to splice: move a whole chain of nodes from one list into
+    another in O(1) by re-linking pointers.
+
+Don't use it when:
+  - You need access by index -> O(n) every time.
+  - You mostly loop over all the elements. Following pointers to scattered
+    addresses is slow on real CPUs ("cache misses": the CPU has to fetch
+    each node from main memory instead of from its fast cache). The same
+    loop over a dynamic array can be several times faster.
+  - Memory is tight. Each node carries one pointer (8 bytes on 64-bit) or
+    two (doubly linked), plus allocator overhead per new. For a list of ints
+    the bookkeeping is bigger than the data.
+
+Compared to the dynamic array:
+
+                         Dynamic array        Singly linked list
+    index access         O(1)                 O(n)
+    push_back            amortized O(1)       O(1) (with tail)
+    push_front           O(n)                 O(1)
+    insert at known spot O(n) (shift)         O(1) (re-link)
+    pointer stability    breaks on resize     stable
+    memory per element   just the value       value + pointer(s)
+    loop speed           fast (contiguous)    slow (scattered)
+
+As with the dynamic array: std::vector is still the default. A linked list
+has to win on one of its specific strengths to be worth it.
+
+The stack and queue topics coming next can be built on either one. Keep that
+in mind - you will get to choose.
+
+
+5. COMMON PITFALLS
+------------------
+
+  - Dereferencing nullptr. front(), back(), pop_front() and pop_back() on an
+    empty list read head_->value or head_->next while head_ is nullptr.
+    Decide what to do (throw or assert) and be consistent, like you did
+    with the dynamic array.
+
+  - Forgetting the tail. The two transitions are the trap:
+      empty -> 1 element:  head_ AND tail_ must both point at the new node.
+      1 element -> empty:  head_ AND tail_ must both become nullptr.
+    If tail_ is left pointing at a deleted node, the next push_back writes
+    into freed memory. The address sanitizer reports this as
+    "heap-use-after-free".
+
+  - Losing the rest of the list. Overwriting a next pointer before saving
+    what it pointed to. Everything after that point is unreachable and leaks.
+    Rule of thumb: set the NEW node's pointers first, then re-link the old
+    nodes.
+
+  - Use after delete in loops. delete cur; cur = cur->next; reads freed
+    memory. Save next first (see the destructor code in section 3).
+
+  - Copy constructor that reverses the list. If you copy by walking the
+    source and calling push_front, you get the elements backwards. Use
+    push_back (this is where tail_ pays off).
+
+  - Shallow copy / self-assignment: same as the dynamic array. The default
+    copy only copies head_, so two lists share nodes and both delete them.
+    a = a must not free the nodes it is about to copy from.
+
+  - size_ out of sync. Every function that adds or removes a node must
+    update size_. A good debug check: walk the list, count the nodes, and
+    compare with size_.
+
+  - O(n^2) by accident. for (i = 0; i < list.size(); i++) list.at(i) looks
+    like a normal loop, but each at(i) walks from the head, so the whole
+    loop is O(n^2). Walk the nodes directly instead (or use an iterator).
+
+  - Recursive destructor. Writing ~Node() { delete next; } looks elegant,
+    but a list of 1,000,000 nodes makes 1,000,000 nested calls and can
+    overflow the call stack. Use a loop.
+
+
+6. SMALL CODE SKETCH (interface only)
+-------------------------------------
+
+Singly linked list, already a template:
+
+    #include <cstddef>   // std::size_t
+
+    template <typename T>
+    class LinkedList {
+    public:
+        LinkedList();
+        ~LinkedList();
+
+        LinkedList(const LinkedList& other);
+        LinkedList& operator=(const LinkedList& other);
+        LinkedList(LinkedList&& other) noexcept;
+        LinkedList& operator=(LinkedList&& other) noexcept;
+
+        void push_front(const T& value);
+        void push_back(const T& value);
+        void pop_front();
+        void pop_back();
+
+        T&       front();
+        const T& front() const;
+        T&       back();
+        const T& back() const;
+
+        T&       at(std::size_t index);          // throws if out of range
+        const T& at(std::size_t index) const;
+
+        std::size_t size() const;
+        bool        empty() const;
+
+        void insert(std::size_t index, const T& value);
+        void erase(std::size_t index);
+        bool contains(const T& value) const;
+        void clear();
+        void reverse();
+
+    private:
+        struct Node {
+            T     value;
+            Node* next;
+        };
+
+        Node*       head_ = nullptr;
+        Node*       tail_ = nullptr;
+        std::size_t size_ = 0;
+    };
+
+Node is declared inside the class and private: users of the list never see
+nodes, only values. (A real std::list hands out iterators, which wrap a
+node pointer - that is exercise 5.)
+
+
+7. EXERCISES
+------------
+
+Put your code in linked_list/linked_list.cpp, with a main() that tries things
+out. Compile with:
+
+  g++ -std=c++17 -Wall -Wextra -Wpedantic -g -fsanitize=address,undefined \
+      linked_list/linked_list.cpp -o linked_list/linked_list.out
+
+Exercise 1 - The basics.
+  Implement the Node struct, constructor, destructor, push_front, push_back,
+  front, back, size, empty, and a print() helper that prints the values in
+  order. In main(), push_back 1..5, push_front 0, and print. Then let the
+  list go out of scope and check that the sanitizer reports no leaks.
+  Also try: an empty list going out of scope, and a list with exactly one
+  element.
+
+Exercise 2 - Removal and safe access.
+  Add pop_front, pop_back, at(i) (throw std::out_of_range), and clear().
+  Pop elements until the list is empty, then push_back again: does tail_
+  still work? This is the single most common linked list bug - test it on
+  purpose. Write down why pop_back is O(n) here.
+
+Exercise 3 - Rule of Five.
+  Add copy constructor, copy assignment, move constructor, move assignment.
+  Test: copy a list, change the copy, check the original did not change and
+  that the copy is in the SAME order. Test a = a. Test that a moved-from
+  list is empty and can still be used (push_back into it).
+
+Exercise 4 - Middle operations and reverse.
+  Add insert(i, x), erase(i), and contains(x). insert(0, x) should behave
+  like push_front and insert(size(), x) like push_back - reuse those
+  functions instead of copying their logic.
+  Then write reverse(): flip the list in place in O(n) time, without
+  creating or deleting any nodes, using only a few local pointer variables.
+  Draw the three pointers on paper before you write the code. Don't forget
+  head_ and tail_ swap roles.
+
+Exercise 5 - Doubly linked + iterator (harder).
+  Add a prev pointer to Node and update every operation to keep it correct.
+  pop_back should now be O(1). Then add a minimal iterator (a small class
+  holding a Node*, with operator*, operator++ and operator!=) plus begin()
+  and end() so this works:
+      for (const auto& x : list) std::cout << x << ' ';
+  Finally, compare with std::list: fill both your list and a
+  DynamicArray / std::vector with 1,000,000 ints and time a loop that sums
+  them. Explain the difference using section 4.
