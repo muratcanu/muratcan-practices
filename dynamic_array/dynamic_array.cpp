@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <utility>
+#include <new>
 constexpr std::size_t kInitialSize = 0;
 
 template <typename T>
@@ -15,7 +16,7 @@ class DynamicArray {
             size_ = kInitialSize;
             capacity_ = initial_capacity;
             if(initial_capacity > 0) {
-                data_ = new T[initial_capacity];
+                data_ = static_cast<T*>(::operator new(sizeof(T) * initial_capacity));
             } else {
                 data_ = nullptr;
             }
@@ -24,11 +25,11 @@ class DynamicArray {
 
         // Copy Constructor
         DynamicArray(const DynamicArray& other) {
-            data_ = new T[other.size()];
+            data_ = static_cast<T*>(::operator new(sizeof(T) * other.size()));
             size_ = other.size();
             capacity_ = other.size();
             for (std::size_t i = 0; i < other.size(); i++) {
-                data_[i] = other[i];
+                new (&data_[i]) T(other[i]);
             }
             moveCount_ = 0;
         }
@@ -46,7 +47,10 @@ class DynamicArray {
 
         // Destructor
         ~DynamicArray() {
-            delete[] data_;
+            for (std::size_t i = 0; i < size_; i++) {
+                (data_ + i)->~T();
+            }
+            ::operator delete(data_);
         }
 
         std::size_t size() const{
@@ -62,8 +66,7 @@ class DynamicArray {
                 // Have to grow array
                 grow();
             }
-
-            data_[size_] = value;
+            new (&data_[size_]) T(value);
             size_++;
         }
 
@@ -78,11 +81,21 @@ class DynamicArray {
         // Copy Assignment
         DynamicArray &operator=(const DynamicArray &other) {
             if (this == &other) return *this;
-            delete[] data_;
-            data_ = new T[other.size()];
+            // Allocate a local memory and construct elements into it.
+            T* tmpdata = static_cast<T*>(::operator new(sizeof(T) * other.size()));
             for (std::size_t i = 0; i < other.size(); i++) {
-                data_[i] = other[i];
+                new (&tmpdata[i]) T(other[i]);
             }
+
+            // Deconstruct existing objects and free the memory
+            for (std::size_t i = 0; i < size_; i++) {
+                (data_ + i)->~T();
+            }
+            ::operator delete(data_);
+
+            // Assign temporary data to actual one.
+            data_ = tmpdata;
+
             size_ = other.size();
             capacity_ = other.size();
             return *this;
@@ -91,7 +104,12 @@ class DynamicArray {
         // Move Assignment
         DynamicArray& operator=(DynamicArray&& other) noexcept {
             if (this == &other) return *this;
-            delete[] data_;
+
+            for (std::size_t i = 0; i < size_; i++) {
+                (data_ + i)->~T();
+            }
+            ::operator delete(data_);
+
             data_ = other.data_;
             size_ = other.size();
             capacity_ = other.capacity();
@@ -120,6 +138,7 @@ class DynamicArray {
         T pop_back() {
             assert(size_ > 0);
             T value = data_[size_ - 1];
+            (data_ + size_ - 1)->~T();
             size_--;
             return value;
         }
@@ -145,6 +164,9 @@ class DynamicArray {
         }
 
         void clear() {
+            for(std::size_t i = 0; i < size_; i++) {
+                (data_ + i)->~T();
+            }
             size_ = 0;
         }
 
@@ -157,7 +179,11 @@ class DynamicArray {
                     grow();
                 }
                 for (std::size_t i = size_; i > index; i--) {
-                    data_[i] = data_[i - 1];
+                    if (i == size_) {
+                        new (&data_[i]) T(data_[i - 1]);
+                    } else {
+                        data_[i] = data_[i - 1];
+                    }
                     moveCount_++;
                 }
                 data_[index] = value;
@@ -168,12 +194,14 @@ class DynamicArray {
         void erase(std::size_t index) {
             assert(index < size_);
             if (index == size_ - 1) {
+                (data_ + size_ - 1)->~T();
                 size_--;
             } else {
                 for (std::size_t i = index + 1; i < size_; i++) {
                     data_[i - 1] = data_[i];
                     moveCount_++;
                 }
+                (data_ + size_ - 1)->~T();
                 size_--;
             }
         }
@@ -181,13 +209,17 @@ class DynamicArray {
         void reserve(std::size_t newCapacity) {
             if (newCapacity < capacity_) return;
             T* tmpdata = data_;
-            data_ = new T[newCapacity];
+            data_ = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
             for (std::size_t i = 0; i < size_; i++) {
-                data_[i] = tmpdata[i];
+                new (&data_[i]) T(tmpdata[i]);
                 moveCount_++;
             }
             capacity_ = newCapacity;
-            delete[] tmpdata;
+
+            for (std::size_t i = 0; i < size_; i++) {
+                (tmpdata + i)->~T();
+            }
+            ::operator delete(tmpdata);
         }
 
         std::size_t moveCount() const{
@@ -208,19 +240,22 @@ class DynamicArray {
             // Create a temporary pointer to not lose existing data
             T* tmpdata = data_;
             if (capacity_ == 0) {
-                data_ = new T[1];
+                data_ = static_cast<T*>(::operator new(sizeof(T)));
                 capacity_ = 1;
             } else {
                 // Allocate the bigger memory
-                data_ = new T[capacity_ * 2];
+                data_ = static_cast<T*>(::operator new(sizeof(T) * capacity_ * 2));
                 capacity_ = capacity_ * 2;
                 // Copy each element on old memory to new one
                 for(std::size_t i = 0; i < size_; i++) {
-                    data_[i] = tmpdata[i];
+                    new (&data_[i]) T(tmpdata[i]);
                 }
                 moveCount_ += capacity_ / 2;
             }
-            delete[] tmpdata;
+            for (std::size_t i = 0; i < size_; i++) {
+                (tmpdata + i)->~T();
+            }
+            ::operator delete(tmpdata);
         }
 };
 
